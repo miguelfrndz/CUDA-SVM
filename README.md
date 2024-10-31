@@ -1,2 +1,2 @@
 # CUDA-SVM
-Example of Support Vector Machine (SVM) Classifier for CUDA and non-CUDA compilation
+Example of Support Vector Machine (SVM) Classifier w/ Cross-Compilation for CUDA & CPU
