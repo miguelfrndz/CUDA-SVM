@@ -33,7 +33,7 @@ $(BUILD_DIR)/%.o: $(SOURCE_DIR)/%.c
 	$(CC) $(CFLAGS) -I$(HEADER_DIR) -I$(SOURCE_DIR) -c $< -o $@ $(LDFLAGS)
 
 $(BUILD_DIR)/%.cu.o: $(SOURCE_DIR)/%.c
-	$(NVCC) $(CUDA_FLAGS) -I$(HEADER_DIR) -I$(SOURCE_DIR) -c $< -o $@ $(LDFLAGS_CUDA)
+	$(NVCC) $(CUDA_FLAGS) -x cu -I$(HEADER_DIR) -I$(SOURCE_DIR) -c $< -o $@ $(LDFLAGS_CUDA)
 
 cuda: .setup_done .cuda_update
 
