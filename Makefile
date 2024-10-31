@@ -33,22 +33,22 @@ $(BUILD_DIR)/%.o: $(SOURCE_DIR)/%.c
 $(BUILD_DIR)/%.cu.o: $(SOURCE_DIR)/%.c
 	$(NVCC) $(CUDA_FLAGS) -I$(HEADER_DIR) -I$(SOURCE_DIR) -c $< -o $@ $(LDFLAGS_CUDA)
 
-cuda: .setup_done $(TARGET).cuda
+cuda: .setup_done .cuda_update
 
-$(TARGET).cuda: $(CUDA_OBJS)
+.cuda_update: $(CUDA_OBJS)
 	$(NVCC) $(CUDA_FLAGS) -I$(HEADER_DIR) -I$(SOURCE_DIR) -o $(TARGET) $(CUDA_OBJS) $(LDFLAGS_CUDA)
-	@touch $(TARGET).cuda
+	@touch .cuda_update
 
 debug: CFLAGS += -DDEBUG
 debug: .silent_clean .setup_done $(TARGET)
 
 .silent_clean:
-	@rm -f $(OBJS) $(CUDA_OBJS) $(TARGET) $(TARGET).cuda .setup_done
+	@rm -f $(OBJS) $(CUDA_OBJS) $(TARGET) .cuda_update .setup_done
 	@rm -rf $(BUILD_DIR)
 
 clean:
 	@$(ECHO) "Cleaning up..."
-	@rm -f $(OBJS) $(CUDA_OBJS) $(TARGET) $(TARGET).cuda .setup_done
+	@rm -f $(OBJS) $(CUDA_OBJS) $(TARGET) .cuda_update .setup_done
 	@rm -rf $(BUILD_DIR)
 
 .setup_done: 
