@@ -22,10 +22,12 @@ CUDA_OBJS = $(patsubst $(SOURCE_DIR)/%.c,$(BUILD_DIR)/%.cu.o,$(SRCS))
 ECHO = echo
 MKDIR = mkdir
 
-all: .setup_done $(TARGET)
+all: .setup_done .update
 
-$(TARGET): $(OBJS)
+.update: $(OBJS)
 	$(CC) $(CFLAGS) -I$(HEADER_DIR) -I$(SOURCE_DIR) -o $(TARGET) $(OBJS) $(LDFLAGS)
+	@rm -f .cuda_update
+	@touch .update
 
 $(BUILD_DIR)/%.o: $(SOURCE_DIR)/%.c
 	$(CC) $(CFLAGS) -I$(HEADER_DIR) -I$(SOURCE_DIR) -c $< -o $@ $(LDFLAGS)
@@ -37,18 +39,21 @@ cuda: .setup_done .cuda_update
 
 .cuda_update: $(CUDA_OBJS)
 	$(NVCC) $(CUDA_FLAGS) -I$(HEADER_DIR) -I$(SOURCE_DIR) -o $(TARGET) $(CUDA_OBJS) $(LDFLAGS_CUDA)
+	@rm -f .update
 	@touch .cuda_update
 
 debug: CFLAGS += -DDEBUG
-debug: .silent_clean .setup_done $(TARGET)
+debug: .silent_clean .setup_done .update
+debug: 
+	@rm -f .cuda_update .update
 
 .silent_clean:
-	@rm -f $(OBJS) $(CUDA_OBJS) $(TARGET) .cuda_update .setup_done
+	@rm -f $(OBJS) $(CUDA_OBJS) $(TARGET) .cuda_update .update .setup_done
 	@rm -rf $(BUILD_DIR)
 
 clean:
 	@$(ECHO) "Cleaning up..."
-	@rm -f $(OBJS) $(CUDA_OBJS) $(TARGET) .cuda_update .setup_done
+	@rm -f $(OBJS) $(CUDA_OBJS) $(TARGET) .cuda_update .update .setup_done
 	@rm -rf $(BUILD_DIR)
 
 .setup_done: 
