@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <assert.h>
+#include "utils.h"
 
 #ifdef __CUDACC__
     #define HOST_FUN __host__
@@ -25,8 +26,18 @@ void print_cpu_running() {
     }
 #endif
 
+const static char *TRAIN_DATA = "data/train.data";
+const static char *TEST_DATA = "data/test.data";
+
 int main(int argc, char **argv) {
     (void)argc, (void)argv;
+    // Load the training and testing datasets
+    Dataset trainData = readDataset(TRAIN_DATA, TRAIN);
+    Dataset testData = readDataset(TEST_DATA, TEST);
+    assert(trainData.features == testData.features && "Number of features in the training and testing datasets should be the same");
+    int features = trainData.features;
+    printf("Number of features: %d\n", features);
+
     #ifdef __CUDACC__
         int threads_per_block = 256;
         int blocks = 1;
@@ -43,6 +54,9 @@ int main(int argc, char **argv) {
     #else
         print_cpu_running();
     #endif
+    // Free the allocated memory
+    freeDataset(trainData);
+    freeDataset(testData);
     return 0;
 }
 

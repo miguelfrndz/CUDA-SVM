@@ -1,30 +1,67 @@
+VERSION = 0.0.1
+
+BUILD_DIR = build
+SOURCE_DIR = src
+HEADER_DIR = src
+
 CC := $(if $(shell which clang 2>/dev/null),clang,gcc)
 NVCC = nvcc
 CFLAGS = -Wall -Wextra -Werror -g
 # CUDA_FLAGS = -gencode arch=compute_75,code=sm_75
-CUDA_FLAGS = -x cu
+# The following flag allows to interpret the c files as a CUDA files (.cu)
+# CUDA_FLAGS = -x cu
 LDFLAGS = 
 LDFLAGS_CUDA = -lcuda -lcudart 
 TARGET = SVM
-SRCS = SVM.c
-OBJS = $(SRCS:.c=.o)
+# SRCS = SVM.c utils.c
+SRCS = $(wildcard $(SOURCE_DIR)/*.c)
+# SRCS := $(SRCS:$(SOURCE_DIR)/%=%)
+OBJS = $(patsubst $(SOURCE_DIR)/%.c,$(BUILD_DIR)/%.o,$(SRCS))
+CUDA_OBJS = $(patsubst $(SOURCE_DIR)/%.c,$(BUILD_DIR)/%.cu.o,$(SRCS))
 
-all: $(TARGET)
+ECHO = echo
+MKDIR = mkdir
+
+all: .setup_done $(TARGET)
 
 $(TARGET): $(OBJS)
-	$(CC) $(CFLAGS) -o $(TARGET) $(OBJS) $(LDFLAGS)
+	$(CC) $(CFLAGS) -I$(HEADER_DIR) -I$(SOURCE_DIR) -o $(TARGET) $(OBJS) $(LDFLAGS)
 
-%.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@ $(LDFLAGS)
+$(BUILD_DIR)/%.o: $(SOURCE_DIR)/%.c
+	$(CC) $(CFLAGS) -I$(HEADER_DIR) -I$(SOURCE_DIR) -c $< -o $@ $(LDFLAGS)
 
-CUDA: $(SRCS)
-	$(NVCC) $(CUDA_FLAGS) -o $(TARGET) $(SRCS) $(LDFLAGS_CUDA)
+$(BUILD_DIR)/%.cu.o: $(SOURCE_DIR)/%.c
+	$(NVCC) $(CUDA_FLAGS) -I$(HEADER_DIR) -I$(SOURCE_DIR) -c $< -o $@ $(LDFLAGS_CUDA)
+
+cuda: .setup_done $(TARGET).cuda
+
+$(TARGET).cuda: $(CUDA_OBJS)
+	$(NVCC) $(CUDA_FLAGS) -I$(HEADER_DIR) -I$(SOURCE_DIR) -o $(TARGET) $(CUDA_OBJS) $(LDFLAGS_CUDA)
+	@touch $(TARGET).cuda
 
 debug: CFLAGS += -DDEBUG
-debug: clean
-debug: $(TARGET)
+debug: .silent_clean .setup_done $(TARGET)
+
+.silent_clean:
+	@rm -f $(OBJS) $(CUDA_OBJS) $(TARGET) $(TARGET).cuda .setup_done
+	@rm -rf $(BUILD_DIR)
 
 clean:
-	rm -f $(OBJS) $(TARGET)
+	@$(ECHO) "Cleaning up..."
+	@rm -f $(OBJS) $(CUDA_OBJS) $(TARGET) $(TARGET).cuda .setup_done
+	@rm -rf $(BUILD_DIR)
 
-.PHONY: all CUDA debug clean
+.setup_done: 
+	@$(ECHO) "Setting up compile environment for CUDA-SVM v$(VERSION)..."
+	@$(MKDIR) -p $(BUILD_DIR)
+	@touch .setup_done
+
+.PHONY: all cuda debug clean help
+
+help:
+	@$(ECHO) "Usage: make [all|CUDA|debug|clean|help]"
+	@$(ECHO) "  all:    build the project for CPU (default)"
+	@$(ECHO) "  cuda:   build the project with CUDA"
+	@$(ECHO) "  debug:  build the project with debug flag"
+	@$(ECHO) "  clean:  remove object files and executable"
+	@$(ECHO) "  help:   show this message"
