@@ -1,4 +1,4 @@
-CC = gcc
+CC := $(if $(shell which clang 2>/dev/null),clang,gcc)
 NVCC = nvcc
 CFLAGS = -Wall -Wextra -Werror -g
 # CUDA_FLAGS = -gencode arch=compute_75,code=sm_75
@@ -27,4 +27,4 @@ debug: $(TARGET)
 clean:
 	rm -f $(OBJS) $(TARGET)
 
-.PHONY: all clean
+.PHONY: all CUDA debug clean
