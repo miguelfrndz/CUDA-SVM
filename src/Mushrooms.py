@@ -19,6 +19,9 @@ if __name__ == "__main__":
     le = LabelEncoder()
     X_train = X_train.apply(lambda x: le.fit_transform(x))
     X_test = X_test.apply(lambda x: le.fit_transform(x))
+    # Convert 0s in y to -1s for SVM
+    y_train = y_train.apply(lambda x: -1 if x == 0 else 1)
+    y_test = y_test.apply(lambda x: -1 if x == 0 else 1)
     # Save the processed data in the data folder
     train = pd.concat([X_train, y_train], axis = 1)
     test = pd.concat([X_test, y_test], axis = 1)

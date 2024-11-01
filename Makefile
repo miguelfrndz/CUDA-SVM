@@ -10,8 +10,9 @@ CFLAGS = -Wall -Wextra -Werror -g
 # CUDA_FLAGS = -gencode arch=compute_75,code=sm_75
 # The following flag allows to interpret the c files as a CUDA files (.cu)
 # CUDA_FLAGS = -x cu
-LDFLAGS = 
-LDFLAGS_CUDA = -lcuda -lcudart 
+LDFLAGS = -lm
+LDFLAGS_CUDA = -lcuda -lcudart
+LDFLAGS_CUDA += $(LDFLAGS)
 TARGET = SVM
 # SRCS = SVM.c utils.c
 SRCS = $(wildcard $(SOURCE_DIR)/*.c)
@@ -30,10 +31,10 @@ all: .setup_done .update
 	@touch .update
 
 $(BUILD_DIR)/%.o: $(SOURCE_DIR)/%.c
-	$(CC) $(CFLAGS) -I$(HEADER_DIR) -I$(SOURCE_DIR) -c $< -o $@ $(LDFLAGS)
+	$(CC) $(CFLAGS) -I$(HEADER_DIR) -I$(SOURCE_DIR) -c $< -o $@
 
 $(BUILD_DIR)/%.cu.o: $(SOURCE_DIR)/%.c
-	$(NVCC) $(CUDA_FLAGS) -x cu -I$(HEADER_DIR) -I$(SOURCE_DIR) -c $< -o $@ $(LDFLAGS_CUDA)
+	$(NVCC) $(CUDA_FLAGS) -x cu -I$(HEADER_DIR) -I$(SOURCE_DIR) -c $< -o $@
 
 cuda: .setup_done .cuda_update
 
@@ -46,6 +47,7 @@ debug: CFLAGS += -DDEBUG
 debug: .silent_clean .setup_done .update
 debug: 
 	@rm -f .cuda_update .update
+	@rm -f $(OBJS) $(CUDA_OBJS)
 
 .silent_clean:
 	@rm -f $(OBJS) $(CUDA_OBJS) $(TARGET) .cuda_update .update .setup_done

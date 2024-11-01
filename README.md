@@ -16,3 +16,4 @@ In order to generate the datasets (i.e, either the small binary *Mushrooms* data
 - [Original Paper](https://home.ttic.edu/~nati/Publications/PegasosMPB.pdf)
 - [MIT Slides on Pegasos](https://people.csail.mit.edu/dsontag/courses/ml16/slides/lecture5.pdf)
 - [MIT Slides on SVMs](https://people.csail.mit.edu/dsontag/courses/ml16/slides/lecture3.pdf)
+- [Good Reference Python Implementation](https://github.com/yangrussell/pegasos/tree/master)
