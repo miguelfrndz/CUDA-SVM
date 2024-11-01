@@ -23,8 +23,8 @@ if __name__ == "__main__":
     train = pd.concat([X_train, y_train], axis = 1)
     test = pd.concat([X_test, y_test], axis = 1)
     # Save the processed data in the data folder as .data files
-    train_file_path = 'data/train.data'
-    test_file_path = 'data/test.data'
+    train_file_path = 'data/mush_train.data'
+    test_file_path = 'data/mush_test.data'
 
     with open(train_file_path, 'w') as train_file:
         train_file.write(f"{train.shape[0]} {train.shape[1] - 1}\n")
