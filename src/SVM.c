@@ -21,6 +21,18 @@ void print_cpu_running() {
     printf("No CUDA devices detected. Running on CPU...\n");
 }
 
+#ifdef __CUDACC__
+    void print_gpu_device_check() {
+        int deviceCount = 0;
+        cudaError_t err = cudaGetDeviceCount(&deviceCount);
+        if (deviceCount > 0 && err == cudaSuccess) {
+            printf("CUDA device detected. Running on GPU...\n");
+        } else {
+            printf("No CUDA devices detected. Running on CPU...\n");
+        }
+    }
+#endif
+
 float dotProduct(float *weights, int *x, int features) {
     float result = 0;
     for (int i = 0; i < features; i++) {
@@ -62,6 +74,12 @@ void trainPegasosSVM(float *weights, Dataset trainData, float lambda, int iterat
         }
     }
 }
+
+#ifdef __CUDACC__
+    __global__ void trainBatchedPegasosSVMKernel(float *weights, Dataset trainData, float lambda, int iterations, int batch_size) {
+        
+    }
+#endif
 
 void trainBatchedPegasosSVM(float *weights, Dataset trainData, float lambda, int iterations, int batch_size) {
     for (int step = 1; step < (iterations + 1); step++) {
@@ -111,15 +129,6 @@ void predictPegasosSVM(int *predictions, float *weights, Dataset testData) {
     }
 }
 
-#ifdef __CUDACC__
-    __global__ void print_gpu_running() {
-        int idx = blockIdx.x * blockDim.x + threadIdx.x;
-        if (idx == 0) {  
-            printf("Running GPU computation on thread %d...\n", idx);
-        }
-    }
-#endif
-
 const static char *TRAIN_DATA;
 const static char *TEST_DATA;
 
@@ -127,18 +136,7 @@ int main(int argc, char **argv) {
     (void)argc, (void)argv;
     // Print the running device
     #ifdef __CUDACC__
-        int threads_per_block = 256;
-        int blocks = 1;
-        // Launch the kernel
-        print_gpu_running<<<blocks, threads_per_block>>>();
-        // Check for kernel launch errors
-        cudaError_t error = cudaGetLastError();
-        if (error != cudaSuccess) {
-            fprintf(stderr, "CUDA error: %s\n", cudaGetErrorString(error));
-            return 1;
-        }
-        // Wait for GPU to finish before accessing results
-        cudaDeviceSynchronize();
+        print_gpu_device_check();
     #else
         print_cpu_running();
     #endif
@@ -226,6 +224,46 @@ int main(int argc, char **argv) {
         free(weights);
         free(predictions);
 
+        #ifdef __CUDACC__
+            printf("\nMethod 3: Mini-Batch Pegasos SVM (CUDA-Accelerated Version)\n");
+            start = clock();
+            // Initialize the weights to zero
+            weights = (float *)calloc(features, sizeof(float));
+            // Regularization lambda parameter
+            lambda = 2e-4;
+            // Number of iterations
+            iterations = 10000;
+            // Batch size for the Mini-Batch Pegasos Algorithm
+            batch_size = 256;
+            int threadsPerBlock = 256;
+            int numBlocks = (features + threadsPerBlock - 1) / threadsPerBlock;
+            // Train the SVM model using the Pegasos Algorithm
+            float *d_weights;
+            cudaMalloc(&d_weights, features * sizeof(float));
+            cudaMemcpy(d_weights, weights, features * sizeof(float), cudaMemcpyHostToDevice);
+            trainBatchedPegasosSVMKernel<<<numBlocks, threadsPerBlock>>>(d_weights, trainData, lambda, iterations, batch_size);
+            cudaMemcpy(weights, d_weights, features * sizeof(float), cudaMemcpyDeviceToHost);
+            cudaFree(d_weights);
+            // Make predictions
+            predictions = (int *)malloc(testData.instances * sizeof(int));
+            predictPegasosSVM(predictions, weights, testData);
+            // Evaluate the predictions
+            correct = 0;
+            for (int i = 0; i < testData.instances; i++) {
+                #ifdef DEBUG
+                    printf("Prediction: %d, Actual: %d\n", predictions[i], testData.output[i]);
+                #endif
+                if (predictions[i] == testData.output[i]) {
+                    correct++;
+                }
+            }
+            accuracy = (float)correct / testData.instances;
+            end = clock();
+            printf("Accuracy: %.2f\n", accuracy);
+            printf("Time taken: %.4f seconds\n", (double)(end - start) / CLOCKS_PER_SEC);
+            free(weights);
+            free(predictions);
+        #endif
         // Free the allocated memory
         freeDataset(trainData);
         freeDataset(testData);
@@ -233,6 +271,8 @@ int main(int argc, char **argv) {
     } else if (strcmp(argv[1], "rcv1") == 0) {
         TRAIN_DATA = "data/rcv1_train.data";
         TEST_DATA = "data/rcv1_test.data";
+        fprintf(stderr, "RCV1 dataset not implemented yet\n");
+        return -1;
     } else {
         fprintf(stderr, "Dataset not found. Please use either 'mush' or 'rcv1'\n");
         return 1;
@@ -240,4 +280,3 @@ int main(int argc, char **argv) {
 
     return 0;
 }
-
