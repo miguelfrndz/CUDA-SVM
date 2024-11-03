@@ -64,7 +64,7 @@ int main(int argc, char **argv){
     for(int i = 0; i < N * N; i++){
         image[i] = rand() % 256;
     }
-    // Create a kernel of size 5 * 5
+    // Create a kernel of size KERNEL_SIZE * KERNEL_SIZE
     int *kernel = (int *)malloc(KERNEL_SIZE * KERNEL_SIZE * sizeof(int));
     for(int i = 0; i < KERNEL_SIZE * KERNEL_SIZE; i++){
         kernel[i] = rand() % 10;
@@ -109,7 +109,7 @@ int main(int argc, char **argv){
     }
     #endif
 
-    // Check if the results are the same and return boolean value
+    // Check if the results are the same between CPU and GPU
     for (int i = 0; i < N * N; i++){
         if (output_cpu[i] != output_gpu[i]){
             printf("The results of the convolution are different!\n");
