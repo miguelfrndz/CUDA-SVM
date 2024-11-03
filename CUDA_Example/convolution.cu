@@ -42,6 +42,14 @@ __global__ void convolution_kernel(int *image, int *kernel, int *output, int ker
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
     int kernel_center = (KERNEL_SIZE - 1) / 2;
+    // Allocate shared memory for the kernel
+    __shared__ int shared_kernel[KERNEL_SIZE * KERNEL_SIZE];
+    // Load the kernel into shared memory
+    if (threadIdx.x < KERNEL_SIZE && threadIdx.y < KERNEL_SIZE) {
+        int idx = threadIdx.y * KERNEL_SIZE + threadIdx.x;
+        shared_kernel[idx] = kernel[idx];
+    }
+    __syncthreads();
     if (x < N && y < N){
         int sum = 0;
         for (int ky = 0; ky < KERNEL_SIZE; ky++){
@@ -49,7 +57,7 @@ __global__ void convolution_kernel(int *image, int *kernel, int *output, int ker
                 int image_x = x + kx - kernel_center;
                 int image_y = y + ky - kernel_center;
                 if (image_x >= 0 && image_x < N && image_y >= 0 && image_y < N){
-                    sum += image[image_y * N + image_x] * kernel[ky * KERNEL_SIZE + kx];
+                    sum += image[image_y * N + image_x] * shared_kernel[ky * KERNEL_SIZE + kx];
                 }
             }
         }
@@ -95,6 +103,7 @@ int main(int argc, char **argv){
     dim3 threadsPerBlock(16, 16);
     dim3 numBlocks((N + threadsPerBlock.x - 1) / threadsPerBlock.x, 
                    (N + threadsPerBlock.y - 1) / threadsPerBlock.y);
+    printf("Number of blocks: %d, Number of threads per block: %d\n", numBlocks.x * numBlocks.y, threadsPerBlock.x * threadsPerBlock.y);
     convolution_kernel<<<numBlocks, threadsPerBlock>>>(d_image, d_kernel, d_output, kernel_sum);
     // Copy the result back to the host
     cudaMemcpy(output_gpu, d_output, N * N * sizeof(int), cudaMemcpyDeviceToHost);
