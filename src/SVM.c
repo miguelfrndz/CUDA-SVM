@@ -11,6 +11,7 @@
     #define DEVICE_FUN __device__
     #define HOST_DEVICE_FUN __host__ __device__
     #include <cuda_runtime.h>
+    #include <curand_kernel.h>
 #else
     #define HOST_FUN 
     #define DEVICE_FUN 
@@ -77,7 +78,73 @@ void trainPegasosSVM(float *weights, Dataset trainData, float lambda, int iterat
 
 #ifdef __CUDACC__
     __global__ void trainBatchedPegasosSVMKernel(float *weights, Dataset trainData, float lambda, int iterations, int batch_size) {
-        
+        extern __shared__ float shared_weights[];
+        int idx = blockIdx.x * blockDim.x + threadIdx.x;
+        if (idx >= trainData.features) return;
+
+        // Initialize curand state
+        curandState state;
+        curand_init(0, idx, 0, &state);
+
+        // Copy weights to shared memory
+        if (threadIdx.x < trainData.features) {
+            shared_weights[threadIdx.x] = weights[threadIdx.x];
+        }
+        __syncthreads();
+
+        for (int step = 1; step < (iterations + 1); step++) {
+            // Select batch_size random instances
+            int *batch_indices = (int *)malloc(batch_size * sizeof(int));
+            for (int i = 0; i < batch_size; i++) {
+                batch_indices[i] = curand(&state) % trainData.instances;
+            }
+
+            float step_size = 1.0 / (lambda * step);
+            float *sum_positive_instances = (float *)malloc(trainData.features * sizeof(float));
+            for (int i = 0; i < trainData.features; i++) {
+                sum_positive_instances[i] = 0.0;
+            }
+
+            for (int i = 0; i < batch_size; i++) {
+                int *x = trainData.input[batch_indices[i]];
+                int y = trainData.output[batch_indices[i]];
+
+                // Compute dot product
+                float dot_product = 0;
+                for (int j = 0; j < trainData.features; j++) {
+                    dot_product += shared_weights[j] * x[j];
+                }
+
+                if (y * dot_product < 1) {
+                    for (int j = 0; j < trainData.features; j++) {
+                        atomicAdd(&sum_positive_instances[j], y * x[j]);
+                    }
+                }
+            }
+
+            for (int i = 0; i < trainData.features; i++) {
+                shared_weights[i] = (1 - step_size * lambda) * shared_weights[i] + (step_size / batch_size) * sum_positive_instances[i];
+            }
+
+            // Gradient-Projection step
+            float ball_radius = 1.0 / sqrt(lambda);
+            float norm = 0;
+            for (int i = 0; i < trainData.features; i++) {
+                norm += shared_weights[i] * shared_weights[i];
+            }
+            float scaling_factor = fmin((float)1.0, ball_radius / sqrt(norm));
+            for (int i = 0; i < trainData.features; i++) {
+                shared_weights[i] *= scaling_factor;
+            }
+
+            free(batch_indices);
+            free(sum_positive_instances);
+        }
+
+        // Copy shared weights back to global memory
+        if (threadIdx.x < trainData.features) {
+            weights[threadIdx.x] = shared_weights[threadIdx.x];
+        }
     }
 #endif
 
