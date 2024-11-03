@@ -77,73 +77,73 @@ void trainPegasosSVM(float *weights, Dataset trainData, float lambda, int iterat
 }
 
 #ifdef __CUDACC__
-    __global__ void trainBatchedPegasosSVMKernel(float *weights, Dataset trainData, float lambda, int iterations, int batch_size) {
+    __global__ void trainBatchedPegasosSVMKernel(float *weights, int *d_input, int *d_output, int num_instances, int num_features, float lambda, int iterations, int batch_size) {
         extern __shared__ float shared_weights[];
+        int tid = threadIdx.x;
         int idx = blockIdx.x * blockDim.x + threadIdx.x;
-        if (idx >= trainData.features) return;
 
-        // Initialize curand state
-        curandState state;
-        curand_init(0, idx, 0, &state);
-
-        // Copy weights to shared memory
-        if (threadIdx.x < trainData.features) {
-            shared_weights[threadIdx.x] = weights[threadIdx.x];
+        // Initialize shared weights
+        if (tid < num_features) {
+            shared_weights[tid] = weights[tid];
         }
         __syncthreads();
 
+        // Initialize random state
+        curandState state;
+        curand_init(clock64(), idx, 0, &state);
+
         for (int step = 1; step < (iterations + 1); step++) {
-            // Select batch_size random instances
-            int *batch_indices = (int *)malloc(batch_size * sizeof(int));
-            for (int i = 0; i < batch_size; i++) {
-                batch_indices[i] = curand(&state) % trainData.instances;
-            }
-
             float step_size = 1.0 / (lambda * step);
-            float *sum_positive_instances = (float *)malloc(trainData.features * sizeof(float));
-            for (int i = 0; i < trainData.features; i++) {
-                sum_positive_instances[i] = 0.0;
-            }
 
+            // Sample batch indices
+            __shared__ int batch_indices[256];
+            if (tid < batch_size) {
+                batch_indices[tid] = curand(&state) % num_instances;
+            }
+            __syncthreads();
+
+            // Compute gradient
+            float gradient = 0.0f;
             for (int i = 0; i < batch_size; i++) {
-                int *x = trainData.input[batch_indices[i]];
-                int y = trainData.output[batch_indices[i]];
+                int data_idx = batch_indices[i];
+                int label = d_output[data_idx];
+                int feature_offset = data_idx * num_features + tid;
+                float dot_product = 0.0f;
 
                 // Compute dot product
-                float dot_product = 0;
-                for (int j = 0; j < trainData.features; j++) {
-                    dot_product += shared_weights[j] * x[j];
+                for (int j = 0; j < num_features; j++) {
+                    dot_product += shared_weights[j] * d_input[data_idx * num_features + j];
                 }
 
-                if (y * dot_product < 1) {
-                    for (int j = 0; j < trainData.features; j++) {
-                        atomicAdd(&sum_positive_instances[j], y * x[j]);
-                    }
+                // Update gradient if constraint is violated
+                if (label * dot_product < 1.0f) {
+                    gradient += label * d_input[feature_offset];
                 }
             }
 
-            for (int i = 0; i < trainData.features; i++) {
-                shared_weights[i] = (1 - step_size * lambda) * shared_weights[i] + (step_size / batch_size) * sum_positive_instances[i];
+            // Update weights
+            if (tid < num_features) {
+                shared_weights[tid] = (1.0 - step_size * lambda) * shared_weights[tid] + (step_size / batch_size) * gradient;
             }
+            __syncthreads();
 
-            // Gradient-Projection step
-            float ball_radius = 1.0 / sqrt(lambda);
-            float norm = 0;
-            for (int i = 0; i < trainData.features; i++) {
-                norm += shared_weights[i] * shared_weights[i];
+            // Projection step
+            if (tid == 0) {
+                float norm = 0.0;
+                for (int i = 0; i < num_features; i++) {
+                    norm += shared_weights[i] * shared_weights[i];
+                }
+                float scale = fminf(1.0, (1.0 / sqrtf(lambda)) / sqrtf(norm));
+                for (int i = 0; i < num_features; i++) {
+                    shared_weights[i] *= scale;
+                }
             }
-            float scaling_factor = fmin((float)1.0, ball_radius / sqrt(norm));
-            for (int i = 0; i < trainData.features; i++) {
-                shared_weights[i] *= scaling_factor;
-            }
-
-            free(batch_indices);
-            free(sum_positive_instances);
+            __syncthreads();
         }
 
-        // Copy shared weights back to global memory
-        if (threadIdx.x < trainData.features) {
-            weights[threadIdx.x] = shared_weights[threadIdx.x];
+        // Write back updated weights
+        if (tid < num_features) {
+            weights[tid] = shared_weights[tid];
         }
     }
 #endif
@@ -293,7 +293,6 @@ int main(int argc, char **argv) {
 
         #ifdef __CUDACC__
             printf("\nMethod 3: Mini-Batch Pegasos SVM (CUDA-Accelerated Version)\n");
-            start = clock();
             // Initialize the weights to zero
             weights = (float *)calloc(features, sizeof(float));
             // Regularization lambda parameter
@@ -304,22 +303,38 @@ int main(int argc, char **argv) {
             batch_size = 256;
             int threadsPerBlock = 256;
             int numBlocks = (features + threadsPerBlock - 1) / threadsPerBlock;
-            // Train the SVM model using the Pegasos Algorithm
+            // Allocate device memory for weights, input, and output
             float *d_weights;
+            int *d_input;
+            int *d_output;
             cudaMalloc(&d_weights, features * sizeof(float));
+            cudaMalloc(&d_input, trainData.instances * features * sizeof(int));
+            cudaMalloc(&d_output, trainData.instances * sizeof(int));
+            // Copy weights, input, and output to device
             cudaMemcpy(d_weights, weights, features * sizeof(float), cudaMemcpyHostToDevice);
-            trainBatchedPegasosSVMKernel<<<numBlocks, threadsPerBlock>>>(d_weights, trainData, lambda, iterations, batch_size);
+            // Flatten input data
+            int *h_input = (int *)malloc(trainData.instances * features * sizeof(int));
+            for (int i = 0; i < trainData.instances; i++) {
+                memcpy(&h_input[i * features], trainData.input[i], features * sizeof(int));
+            }
+            cudaMemcpy(d_input, h_input, trainData.instances * features * sizeof(int), cudaMemcpyHostToDevice);
+            cudaMemcpy(d_output, trainData.output, trainData.instances * sizeof(int), cudaMemcpyHostToDevice);
+            // Train the SVM model using the Pegasos Algorithm
+            trainBatchedPegasosSVMKernel<<<numBlocks, threadsPerBlock>>>(d_weights, d_input, d_output, trainData.instances, features, lambda, iterations, batch_size);
+            // Copy back the weights
             cudaMemcpy(weights, d_weights, features * sizeof(float), cudaMemcpyDeviceToHost);
+            // Free device memory
             cudaFree(d_weights);
+            cudaFree(d_input);
+            cudaFree(d_output);
+            free(h_input);
             // Make predictions
             predictions = (int *)malloc(testData.instances * sizeof(int));
             predictPegasosSVM(predictions, weights, testData);
             // Evaluate the predictions
             correct = 0;
             for (int i = 0; i < testData.instances; i++) {
-                #ifdef DEBUG
-                    printf("Prediction: %d, Actual: %d\n", predictions[i], testData.output[i]);
-                #endif
+                // printf("Prediction: %d, Actual: %d\n", predictions[i], testData.output[i]);
                 if (predictions[i] == testData.output[i]) {
                     correct++;
                 }
