@@ -1,5 +1,5 @@
 # CUDA-SVM
-Example of Support Vector Machine (SVM) Classifier w/ Cross-Compilation for CUDA & CPU.
+Example of Support Vector Machine (SVM) Classifier w/ Cross-Compilation for CUDA & CPU. The Pegasos method for sub-gradient optimization has been implemented.
 
 ## How to Compile CUDA-SVM
 
@@ -10,6 +10,8 @@ As of the time of this writing, CUDA-SVM supports three compilation modes:
 
 ## Generating Dataset
 In order to generate the datasets (i.e, either the small binary *Mushrooms* dataset, or the large multilabel *RCV1*), run the `./fetch_data.sh` command followed by the argument `mush` or `rcv1`.
+
+*Note: As of right now, the RCV1 version has not been implemented.*
 
 ## Pegasos Method for Subgradient Descent Optimization of SVMs
 
